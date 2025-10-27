@@ -105,7 +105,7 @@ const Home = () => {
               <h2 className="text-3xl md:text-4xl font-bold">
                 Every Second Counts
               </h2>
-              <p className="text-lg opacity-90">
+              <p className="text-lg">
                 Someone needs blood every 2 seconds. Your donation can be the difference between life and death.
               </p>
               <Link to="/request-blood">
