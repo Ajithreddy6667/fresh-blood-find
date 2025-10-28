@@ -1,10 +1,18 @@
-import { Link } from "react-router-dom";
-import { Heart, Menu, X } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Heart, Menu, X, LogOut, LogIn } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/");
+  };
 
   const navLinks = [
     { to: "/", label: "Home" },
@@ -34,6 +42,19 @@ const Navbar = () => {
                 {link.label}
               </Link>
             ))}
+            {user ? (
+              <Button variant="outline" size="sm" onClick={handleSignOut}>
+                <LogOut size={16} className="mr-2" />
+                Logout
+              </Button>
+            ) : (
+              <Link to="/auth">
+                <Button variant="default" size="sm">
+                  <LogIn size={16} className="mr-2" />
+                  Login
+                </Button>
+              </Link>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -60,6 +81,19 @@ const Navbar = () => {
                 {link.label}
               </Link>
             ))}
+            {user ? (
+              <Button variant="outline" size="sm" onClick={handleSignOut} className="w-full mt-2">
+                <LogOut size={16} className="mr-2" />
+                Logout
+              </Button>
+            ) : (
+              <Link to="/auth" className="block mt-2">
+                <Button variant="default" size="sm" className="w-full">
+                  <LogIn size={16} className="mr-2" />
+                  Login
+                </Button>
+              </Link>
+            )}
           </div>
         )}
       </div>

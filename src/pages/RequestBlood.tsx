@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { AlertCircle, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,28 +16,74 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 const RequestBlood = () => {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     patientName: "",
     bloodGroup: "",
+    unitsNeeded: "1",
     hospital: "",
     city: "",
+    state: "",
     contactNumber: "",
     urgency: "",
     additionalInfo: "",
   });
 
+  useEffect(() => {
+    if (!user) {
+      navigate("/auth");
+    }
+  }, [user, navigate]);
+
   const bloodTypes = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
   const urgencyLevels = ["Critical (Within hours)", "Urgent (Within 24 hours)", "Needed Soon (2-3 days)"];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast({
-      title: "Request Submitted",
-      description: "Your blood request has been posted. Nearby donors will be notified.",
-    });
+    
+    if (!user) return;
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("blood_requests")
+        .insert({
+          user_id: user.id,
+          patient_name: formData.patientName,
+          blood_type: formData.bloodGroup,
+          units_needed: parseInt(formData.unitsNeeded),
+          hospital_name: formData.hospital,
+          city: formData.city,
+          state: formData.state,
+          contact_number: formData.contactNumber,
+          urgency_level: formData.urgency,
+          additional_notes: formData.additionalInfo || null,
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Request Submitted",
+        description: "Your blood request has been posted. Nearby donors will be notified.",
+      });
+      
+      navigate("/find-donor");
+    } catch (error: any) {
+      toast({
+        title: "Submission failed",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -102,14 +149,30 @@ const RequestBlood = () => {
 
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="space-y-2">
+                      <label className="text-sm font-medium">Units Needed *</label>
+                      <Input
+                        type="number"
+                        placeholder="Number of units"
+                        value={formData.unitsNeeded}
+                        onChange={(e) => setFormData({ ...formData, unitsNeeded: e.target.value })}
+                        required
+                        min="1"
+                        disabled={loading}
+                      />
+                    </div>
+                    <div className="space-y-2">
                       <label className="text-sm font-medium">Hospital Name *</label>
                       <Input
                         placeholder="Name of hospital"
                         value={formData.hospital}
                         onChange={(e) => setFormData({ ...formData, hospital: e.target.value })}
                         required
+                        disabled={loading}
                       />
                     </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-sm font-medium">City *</label>
                       <Input
@@ -117,6 +180,17 @@ const RequestBlood = () => {
                         value={formData.city}
                         onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                         required
+                        disabled={loading}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">State *</label>
+                      <Input
+                        placeholder="State"
+                        value={formData.state}
+                        onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                        required
+                        disabled={loading}
                       />
                     </div>
                   </div>
@@ -163,9 +237,9 @@ const RequestBlood = () => {
                     />
                   </div>
 
-                  <Button type="submit" className="w-full" variant="hero" size="lg">
+                  <Button type="submit" className="w-full" variant="hero" size="lg" disabled={loading}>
                     <Send className="mr-2" size={18} />
-                    Submit Blood Request
+                    {loading ? "Submitting..." : "Submit Blood Request"}
                   </Button>
                 </form>
               </CardContent>
