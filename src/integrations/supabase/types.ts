@@ -14,7 +14,126 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      blood_requests: {
+        Row: {
+          additional_notes: string | null
+          blood_type: string
+          city: string
+          contact_number: string
+          created_at: string | null
+          hospital_name: string
+          id: string
+          patient_name: string
+          state: string
+          status: string | null
+          units_needed: number
+          updated_at: string | null
+          urgency_level: string
+          user_id: string
+        }
+        Insert: {
+          additional_notes?: string | null
+          blood_type: string
+          city: string
+          contact_number: string
+          created_at?: string | null
+          hospital_name: string
+          id?: string
+          patient_name: string
+          state: string
+          status?: string | null
+          units_needed: number
+          updated_at?: string | null
+          urgency_level: string
+          user_id: string
+        }
+        Update: {
+          additional_notes?: string | null
+          blood_type?: string
+          city?: string
+          contact_number?: string
+          created_at?: string | null
+          hospital_name?: string
+          id?: string
+          patient_name?: string
+          state?: string
+          status?: string | null
+          units_needed?: number
+          updated_at?: string | null
+          urgency_level?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      donors: {
+        Row: {
+          address: string
+          blood_type: string
+          city: string
+          created_at: string | null
+          date_of_birth: string
+          id: string
+          is_available: boolean | null
+          last_donation_date: string | null
+          state: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          address: string
+          blood_type: string
+          city: string
+          created_at?: string | null
+          date_of_birth: string
+          id?: string
+          is_available?: boolean | null
+          last_donation_date?: string | null
+          state: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          address?: string
+          blood_type?: string
+          city?: string
+          created_at?: string | null
+          date_of_birth?: string
+          id?: string
+          is_available?: boolean | null
+          last_donation_date?: string | null
+          state?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          email: string
+          full_name: string
+          id: string
+          phone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          full_name: string
+          id: string
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          full_name?: string
+          id?: string
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
