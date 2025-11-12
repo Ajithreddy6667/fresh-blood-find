@@ -17,6 +17,29 @@ import Footer from "@/components/Footer";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { z } from "zod";
+
+const donorSchema = z.object({
+  bloodType: z.enum(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'], {
+    errorMap: () => ({ message: "Please select a valid blood type" })
+  }),
+  dateOfBirth: z.string().refine(
+    (date) => {
+      const birthDate = new Date(date);
+      const today = new Date();
+      const age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      const actualAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) 
+        ? age - 1 
+        : age;
+      return actualAge >= 18 && actualAge <= 65;
+    },
+    { message: 'Donor must be between 18 and 65 years old' }
+  ),
+  address: z.string().trim().min(10, "Address must be at least 10 characters").max(200, "Address must be less than 200 characters"),
+  city: z.string().trim().min(2, "City must be at least 2 characters").max(50, "City must be less than 50 characters"),
+  state: z.string().trim().min(2, "State must be at least 2 characters").max(50, "State must be less than 50 characters"),
+});
 
 const BecomeDonor = () => {
   const { toast } = useToast();
@@ -54,17 +77,36 @@ const BecomeDonor = () => {
 
     if (!user) return;
 
+    // Validate form data
+    const validationResult = donorSchema.safeParse({
+      bloodType: formData.bloodType,
+      dateOfBirth: formData.dateOfBirth,
+      address: formData.address,
+      city: formData.city,
+      state: formData.state,
+    });
+
+    if (!validationResult.success) {
+      const firstError = validationResult.error.errors[0];
+      toast({
+        title: "Validation Error",
+        description: firstError.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const { error } = await supabase
         .from("donors")
         .insert({
           user_id: user.id,
-          blood_type: formData.bloodType,
-          date_of_birth: formData.dateOfBirth,
-          address: formData.address,
-          city: formData.city,
-          state: formData.state,
+          blood_type: validationResult.data.bloodType,
+          date_of_birth: validationResult.data.dateOfBirth,
+          address: validationResult.data.address,
+          city: validationResult.data.city,
+          state: validationResult.data.state,
         });
 
       if (error) throw error;

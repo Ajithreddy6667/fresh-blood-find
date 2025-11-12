@@ -18,6 +18,23 @@ import Footer from "@/components/Footer";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { z } from "zod";
+
+const bloodRequestSchema = z.object({
+  patientName: z.string().trim().min(2, "Patient name must be at least 2 characters").max(100, "Patient name must be less than 100 characters"),
+  bloodGroup: z.enum(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'], {
+    errorMap: () => ({ message: "Please select a valid blood type" })
+  }),
+  unitsNeeded: z.number().int().min(1, "At least 1 unit is required").max(10, "Maximum 10 units allowed"),
+  hospitalName: z.string().trim().min(3, "Hospital name must be at least 3 characters").max(150, "Hospital name must be less than 150 characters"),
+  city: z.string().trim().min(2, "City must be at least 2 characters").max(50, "City must be less than 50 characters"),
+  state: z.string().trim().min(2, "State must be at least 2 characters").max(50, "State must be less than 50 characters"),
+  contactNumber: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Please enter a valid phone number"),
+  urgencyLevel: z.enum(['Critical (Within hours)', 'Urgent (Within 24 hours)', 'Needed Soon (2-3 days)'], {
+    errorMap: () => ({ message: "Please select urgency level" })
+  }),
+  additionalNotes: z.string().trim().max(500, "Additional notes must be less than 500 characters").optional().or(z.literal('')),
+});
 
 const RequestBlood = () => {
   const { toast } = useToast();
@@ -50,21 +67,44 @@ const RequestBlood = () => {
     
     if (!user) return;
 
+    // Validate form data
+    const validationResult = bloodRequestSchema.safeParse({
+      patientName: formData.patientName,
+      bloodGroup: formData.bloodGroup,
+      unitsNeeded: parseInt(formData.unitsNeeded),
+      hospitalName: formData.hospital,
+      city: formData.city,
+      state: formData.state,
+      contactNumber: formData.contactNumber,
+      urgencyLevel: formData.urgency,
+      additionalNotes: formData.additionalInfo || '',
+    });
+
+    if (!validationResult.success) {
+      const firstError = validationResult.error.errors[0];
+      toast({
+        title: "Validation Error",
+        description: firstError.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const { error } = await supabase
         .from("blood_requests")
         .insert({
           user_id: user.id,
-          patient_name: formData.patientName,
-          blood_type: formData.bloodGroup,
-          units_needed: parseInt(formData.unitsNeeded),
-          hospital_name: formData.hospital,
-          city: formData.city,
-          state: formData.state,
-          contact_number: formData.contactNumber,
-          urgency_level: formData.urgency,
-          additional_notes: formData.additionalInfo || null,
+          patient_name: validationResult.data.patientName,
+          blood_type: validationResult.data.bloodGroup,
+          units_needed: validationResult.data.unitsNeeded,
+          hospital_name: validationResult.data.hospitalName,
+          city: validationResult.data.city,
+          state: validationResult.data.state,
+          contact_number: validationResult.data.contactNumber,
+          urgency_level: validationResult.data.urgencyLevel,
+          additional_notes: validationResult.data.additionalNotes || null,
         });
 
       if (error) throw error;
