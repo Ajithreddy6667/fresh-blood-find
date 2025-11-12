@@ -22,10 +22,8 @@ interface Donor {
   blood_type: string;
   city: string;
   state: string;
-  profiles: {
-    full_name: string;
-    phone: string | null;
-  };
+  full_name?: string;
+  phone?: string | null;
 }
 
 const FindDonor = () => {
@@ -40,10 +38,10 @@ const FindDonor = () => {
   const fetchDonors = async () => {
     setLoading(true);
     try {
+      // Use the secure donor_directory view
       let donorQuery = supabase
-        .from("donors")
-        .select("*")
-        .eq("is_available", true);
+        .from("donor_directory")
+        .select("*");
 
       if (bloodGroup) {
         donorQuery = donorQuery.eq("blood_type", bloodGroup);
@@ -56,22 +54,36 @@ const FindDonor = () => {
       const { data: donorData, error: donorError } = await donorQuery;
       if (donorError) throw donorError;
 
-      // Fetch profiles for these donors
-      const userIds = donorData?.map(d => d.user_id) || [];
-      const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
-        .select("id, full_name, phone")
-        .in("id", userIds);
-
-      if (profileError) throw profileError;
-
-      // Combine the data
-      const combined = donorData?.map(donor => ({
-        ...donor,
-        profiles: profileData?.find(p => p.id === donor.user_id) || { full_name: "Unknown", phone: null }
-      })) || [];
-
-      setDonors(combined as any);
+      // Check if user is authenticated
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user && donorData && donorData.length > 0) {
+        // Authenticated users can get contact info via SECURITY DEFINER function
+        const donorsWithContact = await Promise.all(
+          donorData.map(async (donor) => {
+            try {
+              const { data: contactData } = await supabase
+                .rpc("get_donor_contact_info", { p_donor_id: donor.id });
+              
+              if (contactData && contactData.length > 0) {
+                return {
+                  ...donor,
+                  full_name: contactData[0].full_name,
+                  phone: contactData[0].phone
+                };
+              }
+              return donor;
+            } catch {
+              // If contact fetch fails, return donor without contact info
+              return donor;
+            }
+          })
+        );
+        setDonors(donorsWithContact as Donor[]);
+      } else {
+        // Unauthenticated users see directory without contact details
+        setDonors(donorData as Donor[]);
+      }
     } catch (error: any) {
       toast({
         title: "Error fetching donors",
@@ -169,7 +181,9 @@ const FindDonor = () => {
                                 {donor.blood_type}
                               </div>
                               <div>
-                                <h3 className="font-semibold text-lg">{donor.profiles.full_name}</h3>
+                                <h3 className="font-semibold text-lg">
+                                  {donor.full_name || "Donor Available"}
+                                </h3>
                                 <p className="text-sm text-muted-foreground flex items-center gap-1">
                                   <MapPin size={14} />
                                   {donor.city}, {donor.state}
@@ -178,13 +192,20 @@ const FindDonor = () => {
                             </div>
                           </div>
                           <div className="flex flex-col sm:flex-row gap-2">
-                            {donor.profiles.phone && (
+                            {donor.phone ? (
                               <Button variant="outline" size="sm" asChild>
-                                <a href={`tel:${donor.profiles.phone}`}>
+                                <a href={`tel:${donor.phone}`}>
                                   <Phone size={16} className="mr-2" />
                                   Contact
                                 </a>
                               </Button>
+                            ) : (
+                              <Link to="/auth">
+                                <Button variant="outline" size="sm">
+                                  <Phone size={16} className="mr-2" />
+                                  Login to Contact
+                                </Button>
+                              </Link>
                             )}
                             <Link to="/request-blood">
                               <Button variant="default" size="sm">
