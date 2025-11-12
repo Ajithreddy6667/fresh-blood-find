@@ -136,10 +136,88 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      donor_directory: {
+        Row: {
+          blood_type: string | null
+          city: string | null
+          created_at: string | null
+          id: string | null
+          is_available: boolean | null
+          state: string | null
+        }
+        Insert: {
+          blood_type?: string | null
+          city?: string | null
+          created_at?: string | null
+          id?: string | null
+          is_available?: boolean | null
+          state?: string | null
+        }
+        Update: {
+          blood_type?: string | null
+          city?: string | null
+          created_at?: string | null
+          id?: string | null
+          is_available?: boolean | null
+          state?: string | null
+        }
+        Relationships: []
+      }
+      public_blood_requests: {
+        Row: {
+          blood_type: string | null
+          city: string | null
+          contact_info: string | null
+          created_at: string | null
+          hospital_name: string | null
+          id: string | null
+          patient_initial: string | null
+          state: string | null
+          status: string | null
+          units_needed: number | null
+          urgency_level: string | null
+        }
+        Insert: {
+          blood_type?: string | null
+          city?: string | null
+          contact_info?: never
+          created_at?: string | null
+          hospital_name?: string | null
+          id?: string | null
+          patient_initial?: never
+          state?: string | null
+          status?: string | null
+          units_needed?: number | null
+          urgency_level?: string | null
+        }
+        Update: {
+          blood_type?: string | null
+          city?: string | null
+          contact_info?: never
+          created_at?: string | null
+          hospital_name?: string | null
+          id?: string | null
+          patient_initial?: never
+          state?: string | null
+          status?: string | null
+          units_needed?: number | null
+          urgency_level?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
-      [_ in never]: never
+      get_donor_contact_info: {
+        Args: { p_donor_id: string }
+        Returns: {
+          blood_type: string
+          city: string
+          full_name: string
+          id: string
+          phone: string
+          state: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
