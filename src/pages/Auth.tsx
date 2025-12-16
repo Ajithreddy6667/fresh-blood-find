@@ -97,7 +97,7 @@ const Auth = () => {
 
       toast({
         title: "Account created!",
-        description: "Welcome to BloodConnect. You can now log in.",
+        description: "Welcome to RedConnect. You can now log in.",
       });
       
       navigate("/");
@@ -123,7 +123,7 @@ const Auth = () => {
               <div className="flex justify-center">
                 <Heart className="fill-primary text-primary" size={60} />
               </div>
-              <h1 className="text-3xl font-bold text-foreground">Welcome to BloodConnect</h1>
+              <h1 className="text-3xl font-bold text-foreground">Welcome to RedConnect</h1>
               <p className="text-muted-foreground">Join our community of lifesavers</p>
             </div>
 

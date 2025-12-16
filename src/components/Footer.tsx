@@ -8,7 +8,7 @@ const Footer = () => {
           <div className="flex items-center gap-2 text-muted-foreground">
             <Heart className="fill-primary text-primary" size={20} />
             <span className="text-sm">
-              © 2025 BloodConnect | Designed for Saving Lives
+              © 2025 RedConnect | Designed for Saving Lives
             </span>
           </div>
           <div className="text-sm text-muted-foreground">

@@ -75,7 +75,7 @@ const Home = () => {
               How It Works
             </h2>
             <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
-              Getting started with BloodConnect is simple and straightforward
+              Getting started with RedConnect is simple and straightforward
             </p>
             <div className="grid md:grid-cols-3 gap-12 max-w-4xl mx-auto">
               <StepCard

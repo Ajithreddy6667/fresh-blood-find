@@ -60,7 +60,7 @@ const Contact = () => {
                     <Mail className="text-primary" size={24} />
                   </div>
                   <h3 className="font-semibold">Email Support</h3>
-                  <p className="text-sm text-muted-foreground">help@bloodconnect.org</p>
+                  <p className="text-sm text-muted-foreground">help@redconnect.org</p>
                   <p className="text-xs text-muted-foreground">Response within 24 hours</p>
                 </CardContent>
               </Card>

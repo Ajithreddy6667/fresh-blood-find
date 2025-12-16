@@ -28,7 +28,7 @@ const Navbar = () => {
         <div className="flex items-center justify-between h-16">
           <Link to="/" className="flex items-center gap-2 text-primary font-bold text-xl">
             <Heart className="fill-primary" size={28} />
-            <span>BloodConnect</span>
+            <span>RedConnect</span>
           </Link>
 
           {/* Desktop Navigation */}
