@@ -113,7 +113,7 @@ const BecomeDonor = () => {
 
       toast({
         title: "Registration Successful!",
-        description: "Welcome to BloodConnect. You're now part of our lifesaving community.",
+        description: "Welcome to RedConnect. You're now part of our lifesaving community.",
       });
       
       navigate("/");
