@@ -138,15 +138,15 @@ const FindDonor = () => {
   };
 
   const sendNotification = async () => {
-    if (!selectedDonor || !userProfile) return;
+    if (!selectedDonor) return;
     
     setSendingNotification(true);
     try {
+      // Only send donor_id, blood_type, urgency, and message
+      // The edge function will fetch requester info from the authenticated user's profile
       const { data, error } = await supabase.functions.invoke("notify-donor", {
         body: {
           donor_id: selectedDonor.id,
-          requester_name: userProfile.full_name || "A user",
-          requester_phone: userProfile.phone || "Not provided",
           blood_type: selectedDonor.blood_type,
           urgency: "Urgent",
           message: contactMessage,
