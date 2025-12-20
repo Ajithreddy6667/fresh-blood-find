@@ -118,15 +118,25 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log("Notification request for donor:", donor_id);
 
-    // 6. Use service role client for privileged operations
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // 6. Create an admin client for privileged operations (DB writes/reads)
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get donor info using the RPC function
-    const { data: donorData, error: donorError } = await supabase
+    // Get donor contact info using the authenticated user's JWT (required by DB function)
+    const { data: donorData, error: donorError } = await supabaseClient
       .rpc("get_donor_contact_info", { p_donor_id: donor_id });
 
-    if (donorError || !donorData || donorData.length === 0) {
-      console.error("Failed to get donor info:", donorError);
+    if (donorError) {
+      console.error("Failed to get donor contact info:", donorError);
+      return new Response(
+        JSON.stringify({
+          error: "Failed to fetch donor contact info",
+          details: donorError.message,
+        }),
+        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    if (!donorData || donorData.length === 0) {
       return new Response(
         JSON.stringify({ error: "Donor not found or unavailable" }),
         { status: 404, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -137,7 +147,7 @@ const handler = async (req: Request): Promise<Response> => {
     console.log("Found donor:", donor.full_name, "Phone:", donor.phone);
 
     // Get donor's user_id from donors table
-    const { data: donorRecord, error: donorRecordError } = await supabase
+    const { data: donorRecord, error: donorRecordError } = await supabaseAdmin
       .from("donors")
       .select("user_id")
       .eq("id", donor_id)
@@ -160,7 +170,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // Get donor's email from profiles
-    const { data: profile, error: profileFetchError } = await supabase
+    const { data: profile } = await supabaseAdmin
       .from("profiles")
       .select("email")
       .eq("id", donorRecord.user_id)
@@ -177,7 +187,7 @@ const handler = async (req: Request): Promise<Response> => {
     };
 
     // 1. Create in-app notification
-    const { error: notifError } = await supabase
+    const { error: notifError } = await supabaseAdmin
       .from("notifications")
       .insert({
         user_id: donorRecord.user_id,
@@ -205,13 +215,13 @@ const handler = async (req: Request): Promise<Response> => {
     if (twilioAccountSid && twilioAuthToken && twilioPhoneNumber && donor.phone) {
       const formattedPhone = formatPhoneNumber(donor.phone);
       console.log("Sending SMS to:", formattedPhone, "(original:", donor.phone, ")");
-      
+
       try {
         const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`;
         const formData = new URLSearchParams();
         formData.append("To", formattedPhone);
         formData.append("From", twilioPhoneNumber);
-        formData.append("Body", `🩸 RedConnect Alert: ${notificationMessage}`);
+        formData.append("Body", `RedConnect: ${notificationMessage}`);
 
         const twilioResponse = await fetch(twilioUrl, {
           method: "POST",
@@ -238,13 +248,13 @@ const handler = async (req: Request): Promise<Response> => {
         results.errors.push(`SMS exception: ${smsError}`);
       }
 
-      // 3. Try WhatsApp via Twilio (if SMS works, WhatsApp might too)
+      // 3. Try WhatsApp via Twilio (if configured)
       try {
         const whatsappUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`;
         const whatsappData = new URLSearchParams();
         whatsappData.append("To", `whatsapp:${formattedPhone}`);
         whatsappData.append("From", `whatsapp:${twilioPhoneNumber}`);
-        whatsappData.append("Body", `🩸 *RedConnect Blood Request Alert*\n\n${requester_name} urgently needs *${blood_type}* blood.\n\n📞 Contact: ${requester_phone}\n⚡ Urgency: ${urgency}${message ? `\n💬 Message: ${message}` : ""}\n\nPlease contact them if you can help!`);
+        whatsappData.append("Body", `RedConnect (WhatsApp): ${notificationMessage}`);
 
         const whatsappResponse = await fetch(whatsappUrl, {
           method: "POST",
