@@ -19,6 +19,7 @@ const Navbar = () => {
     { to: "/find-donor", label: "Find Donor" },
     { to: "/request-blood", label: "Request Blood" },
     { to: "/become-donor", label: "Become a Donor" },
+    ...(user ? [{ to: "/donor-dashboard", label: "Dashboard" }] : []),
     { to: "/contact", label: "Contact" },
   ];
 
