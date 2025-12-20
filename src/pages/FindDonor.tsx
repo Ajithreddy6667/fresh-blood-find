@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Search, MapPin, Phone, Droplet } from "lucide-react";
+import { Search, MapPin, Phone, Droplet, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,11 +11,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import MapSection from "@/components/MapSection";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Donor {
   id: string;
@@ -28,17 +39,39 @@ interface Donor {
 
 const FindDonor = () => {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [bloodGroup, setBloodGroup] = useState("");
   const [location, setLocation] = useState("");
   const [donors, setDonors] = useState<Donor[]>([]);
   const [loading, setLoading] = useState(false);
+  const [contactDialogOpen, setContactDialogOpen] = useState(false);
+  const [selectedDonor, setSelectedDonor] = useState<Donor | null>(null);
+  const [contactMessage, setContactMessage] = useState("");
+  const [sendingNotification, setSendingNotification] = useState(false);
+  const [userProfile, setUserProfile] = useState<{ full_name: string; phone: string } | null>(null);
 
   const bloodTypes = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+
+  const fetchUserProfile = async () => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("full_name, phone")
+        .eq("id", user.id)
+        .single();
+      
+      if (!error && data) {
+        setUserProfile(data);
+      }
+    } catch (error) {
+      console.error("Error fetching profile:", error);
+    }
+  };
 
   const fetchDonors = async () => {
     setLoading(true);
     try {
-      // Use the secure donor_directory view
       let donorQuery = supabase
         .from("donor_directory")
         .select("*");
@@ -54,11 +87,9 @@ const FindDonor = () => {
       const { data: donorData, error: donorError } = await donorQuery;
       if (donorError) throw donorError;
 
-      // Check if user is authenticated
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
       
-      if (user && donorData && donorData.length > 0) {
-        // Authenticated users can get contact info via SECURITY DEFINER function
+      if (currentUser && donorData && donorData.length > 0) {
         const donorsWithContact = await Promise.all(
           donorData.map(async (donor) => {
             try {
@@ -74,14 +105,12 @@ const FindDonor = () => {
               }
               return donor;
             } catch {
-              // If contact fetch fails, return donor without contact info
               return donor;
             }
           })
         );
         setDonors(donorsWithContact as Donor[]);
       } else {
-        // Unauthenticated users see directory without contact details
         setDonors(donorData as Donor[]);
       }
     } catch (error: any) {
@@ -95,9 +124,59 @@ const FindDonor = () => {
     }
   };
 
+  const handleContactDonor = (donor: Donor) => {
+    if (!user) {
+      toast({
+        title: "Login Required",
+        description: "Please login to contact donors.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setSelectedDonor(donor);
+    setContactDialogOpen(true);
+  };
+
+  const sendNotification = async () => {
+    if (!selectedDonor || !userProfile) return;
+    
+    setSendingNotification(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("notify-donor", {
+        body: {
+          donor_id: selectedDonor.id,
+          requester_name: userProfile.full_name || "A user",
+          requester_phone: userProfile.phone || "Not provided",
+          blood_type: selectedDonor.blood_type,
+          urgency: "Urgent",
+          message: contactMessage,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Notification Sent!",
+        description: "The donor has been notified via app, SMS, and email.",
+      });
+      
+      setContactDialogOpen(false);
+      setContactMessage("");
+    } catch (error: any) {
+      toast({
+        title: "Failed to send notification",
+        description: error.message || "Please try calling the donor directly.",
+        variant: "destructive",
+      });
+    } finally {
+      setSendingNotification(false);
+    }
+  };
+
   useEffect(() => {
     fetchDonors();
-  }, []);
+    fetchUserProfile();
+  }, [user]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -192,13 +271,25 @@ const FindDonor = () => {
                             </div>
                           </div>
                           <div className="flex flex-col sm:flex-row gap-2">
-                            {donor.phone ? (
-                              <Button variant="outline" size="sm" asChild>
-                                <a href={`tel:${donor.phone}`}>
-                                  <Phone size={16} className="mr-2" />
-                                  Contact
-                                </a>
-                              </Button>
+                            {user ? (
+                              <>
+                                {donor.phone && (
+                                  <Button variant="outline" size="sm" asChild>
+                                    <a href={`tel:${donor.phone}`}>
+                                      <Phone size={16} className="mr-2" />
+                                      Call
+                                    </a>
+                                  </Button>
+                                )}
+                                <Button 
+                                  variant="secondary" 
+                                  size="sm"
+                                  onClick={() => handleContactDonor(donor)}
+                                >
+                                  <MessageSquare size={16} className="mr-2" />
+                                  Notify Donor
+                                </Button>
+                              </>
                             ) : (
                               <Link to="/auth">
                                 <Button variant="outline" size="sm">
@@ -246,6 +337,45 @@ const FindDonor = () => {
       </main>
 
       <Footer />
+
+      {/* Contact Dialog */}
+      <Dialog open={contactDialogOpen} onOpenChange={setContactDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Contact {selectedDonor?.full_name || "Donor"}</DialogTitle>
+            <DialogDescription>
+              Send a notification to this donor via app, SMS, and email. They will receive your contact details.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Your Message (Optional)</Label>
+              <Textarea
+                placeholder="Add a personal message explaining your need..."
+                value={contactMessage}
+                onChange={(e) => setContactMessage(e.target.value)}
+                rows={3}
+              />
+            </div>
+            <div className="bg-muted p-3 rounded-lg text-sm">
+              <p className="font-medium">The donor will receive:</p>
+              <ul className="list-disc list-inside mt-1 text-muted-foreground">
+                <li>Your name: {userProfile?.full_name || "Not set"}</li>
+                <li>Your phone: {userProfile?.phone || "Not set"}</li>
+                <li>Blood type needed: {selectedDonor?.blood_type}</li>
+              </ul>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setContactDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={sendNotification} disabled={sendingNotification}>
+              {sendingNotification ? "Sending..." : "Send Notification"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -1,1 +1,4 @@
 project_id = "qqpzlrnmzewqsnvsydxf"
+
+[functions.notify-donor]
+verify_jwt = true
