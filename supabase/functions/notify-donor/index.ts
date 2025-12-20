@@ -9,8 +9,6 @@ const corsHeaders = {
 
 interface NotifyDonorRequest {
   donor_id: string;
-  requester_name: string;
-  requester_phone: string;
   blood_type: string;
   urgency: string;
   message?: string;
@@ -23,19 +21,75 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
+    // 1. Verify authentication
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      console.error("No authorization header provided");
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     const twilioAccountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
     const twilioAuthToken = Deno.env.get("TWILIO_AUTH_TOKEN");
     const twilioPhoneNumber = Deno.env.get("TWILIO_PHONE_NUMBER");
 
+    // 2. Create client with user's JWT to verify authentication
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    // 3. Verify JWT and get authenticated user
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    
+    if (authError || !user) {
+      console.error("Invalid token:", authError?.message);
+      return new Response(
+        JSON.stringify({ error: "Invalid token" }),
+        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    console.log("Authenticated user:", user.id);
+
+    // 4. Fetch requester info from authenticated user's profile (don't trust client data)
+    const { data: requesterProfile, error: profileError } = await supabaseClient
+      .from("profiles")
+      .select("full_name, phone")
+      .eq("id", user.id)
+      .single();
+
+    if (profileError || !requesterProfile) {
+      console.error("Profile not found:", profileError?.message);
+      return new Response(
+        JSON.stringify({ error: "Profile not found. Please complete your profile first." }),
+        { status: 404, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Use verified data from database, not client-supplied
+    const requester_name = requesterProfile.full_name || "A RedConnect user";
+    const requester_phone = requesterProfile.phone || "Not provided";
+
+    // 5. Parse request body (only accept donor_id, blood_type, urgency, message from client)
+    const { donor_id, blood_type, urgency, message } = await req.json() as NotifyDonorRequest;
+
+    if (!donor_id) {
+      return new Response(
+        JSON.stringify({ error: "donor_id is required" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    console.log("Received notification request for donor:", donor_id, "from user:", user.id);
+
+    // 6. Use service role client for privileged operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    const { donor_id, requester_name, requester_phone, blood_type, urgency, message } = 
-      await req.json() as NotifyDonorRequest;
-
-    console.log("Received notification request for donor:", donor_id);
 
     // Get donor info using the RPC function
     const { data: donorData, error: donorError } = await supabase
@@ -43,7 +97,10 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (donorError || !donorData || donorData.length === 0) {
       console.error("Failed to get donor info:", donorError);
-      throw new Error("Donor not found");
+      return new Response(
+        JSON.stringify({ error: "Donor not found or unavailable" }),
+        { status: 404, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
     }
 
     const donor = donorData[0];
@@ -58,11 +115,22 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (donorRecordError || !donorRecord) {
       console.error("Failed to get donor user_id:", donorRecordError);
-      throw new Error("Donor record not found");
+      return new Response(
+        JSON.stringify({ error: "Donor record not found" }),
+        { status: 404, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Prevent users from notifying themselves
+    if (donorRecord.user_id === user.id) {
+      return new Response(
+        JSON.stringify({ error: "You cannot send a notification to yourself" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
     }
 
     // Get donor's email from profiles
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile, error: profileFetchError } = await supabase
       .from("profiles")
       .select("email")
       .eq("id", donorRecord.user_id)
@@ -85,6 +153,7 @@ const handler = async (req: Request): Promise<Response> => {
         message: notificationMessage,
         type: "blood_request",
         metadata: {
+          requester_id: user.id,
           requester_name,
           requester_phone,
           blood_type,
@@ -185,7 +254,7 @@ const handler = async (req: Request): Promise<Response> => {
   } catch (error: any) {
     console.error("Error in notify-donor function:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: "An error occurred while processing your request" }),
       {
         status: 500,
         headers: { "Content-Type": "application/json", ...corsHeaders },
