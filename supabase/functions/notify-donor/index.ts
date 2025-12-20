@@ -14,6 +14,29 @@ interface NotifyDonorRequest {
   message?: string;
 }
 
+// Format phone number to E.164 format for Twilio
+function formatPhoneNumber(phone: string): string {
+  // Remove all non-digit characters
+  let cleaned = phone.replace(/\D/g, "");
+  
+  // If it starts with 0, assume it's an Indian number and replace with 91
+  if (cleaned.startsWith("0")) {
+    cleaned = "91" + cleaned.substring(1);
+  }
+  
+  // If it's a 10-digit number, assume it's Indian and add 91
+  if (cleaned.length === 10) {
+    cleaned = "91" + cleaned;
+  }
+  
+  // If it doesn't start with +, add it
+  if (!cleaned.startsWith("+")) {
+    cleaned = "+" + cleaned;
+  }
+  
+  return cleaned;
+}
+
 const handler = async (req: Request): Promise<Response> => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -21,6 +44,8 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
+    console.log("=== Notify Donor Function Started ===");
+    
     // 1. Verify authentication
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
@@ -38,6 +63,9 @@ const handler = async (req: Request): Promise<Response> => {
     const twilioAccountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
     const twilioAuthToken = Deno.env.get("TWILIO_AUTH_TOKEN");
     const twilioPhoneNumber = Deno.env.get("TWILIO_PHONE_NUMBER");
+
+    console.log("Twilio configured:", !!twilioAccountSid && !!twilioAuthToken && !!twilioPhoneNumber);
+    console.log("Resend configured:", !!resendApiKey);
 
     // 2. Create client with user's JWT to verify authentication
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
@@ -76,6 +104,8 @@ const handler = async (req: Request): Promise<Response> => {
     const requester_name = requesterProfile.full_name || "A RedConnect user";
     const requester_phone = requesterProfile.phone || "Not provided";
 
+    console.log("Requester:", requester_name, "Phone:", requester_phone);
+
     // 5. Parse request body (only accept donor_id, blood_type, urgency, message from client)
     const { donor_id, blood_type, urgency, message } = await req.json() as NotifyDonorRequest;
 
@@ -86,7 +116,7 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    console.log("Received notification request for donor:", donor_id, "from user:", user.id);
+    console.log("Notification request for donor:", donor_id);
 
     // 6. Use service role client for privileged operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -104,7 +134,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const donor = donorData[0];
-    console.log("Found donor:", donor.full_name);
+    console.log("Found donor:", donor.full_name, "Phone:", donor.phone);
 
     // Get donor's user_id from donors table
     const { data: donorRecord, error: donorRecordError } = await supabase
@@ -141,7 +171,9 @@ const handler = async (req: Request): Promise<Response> => {
     const results = {
       inApp: false,
       sms: false,
+      whatsapp: false,
       email: false,
+      errors: [] as string[],
     };
 
     // 1. Create in-app notification
@@ -163,19 +195,23 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (!notifError) {
       results.inApp = true;
-      console.log("In-app notification created");
+      console.log("In-app notification created successfully");
     } else {
       console.error("Failed to create in-app notification:", notifError);
+      results.errors.push("In-app notification failed");
     }
 
     // 2. Send SMS via Twilio
     if (twilioAccountSid && twilioAuthToken && twilioPhoneNumber && donor.phone) {
+      const formattedPhone = formatPhoneNumber(donor.phone);
+      console.log("Sending SMS to:", formattedPhone, "(original:", donor.phone, ")");
+      
       try {
         const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`;
         const formData = new URLSearchParams();
-        formData.append("To", donor.phone);
+        formData.append("To", formattedPhone);
         formData.append("From", twilioPhoneNumber);
-        formData.append("Body", `RedConnect Alert: ${notificationMessage}`);
+        formData.append("Body", `🩸 RedConnect Alert: ${notificationMessage}`);
 
         const twilioResponse = await fetch(twilioUrl, {
           method: "POST",
@@ -186,23 +222,66 @@ const handler = async (req: Request): Promise<Response> => {
           body: formData.toString(),
         });
 
+        const twilioResult = await twilioResponse.text();
+        console.log("Twilio SMS response status:", twilioResponse.status);
+        console.log("Twilio SMS response:", twilioResult);
+
         if (twilioResponse.ok) {
           results.sms = true;
           console.log("SMS sent successfully");
         } else {
-          const errorText = await twilioResponse.text();
-          console.error("Twilio error:", errorText);
+          console.error("Twilio SMS error:", twilioResult);
+          results.errors.push(`SMS failed: ${twilioResult}`);
         }
       } catch (smsError) {
         console.error("SMS sending failed:", smsError);
+        results.errors.push(`SMS exception: ${smsError}`);
+      }
+
+      // 3. Try WhatsApp via Twilio (if SMS works, WhatsApp might too)
+      try {
+        const whatsappUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`;
+        const whatsappData = new URLSearchParams();
+        whatsappData.append("To", `whatsapp:${formattedPhone}`);
+        whatsappData.append("From", `whatsapp:${twilioPhoneNumber}`);
+        whatsappData.append("Body", `🩸 *RedConnect Blood Request Alert*\n\n${requester_name} urgently needs *${blood_type}* blood.\n\n📞 Contact: ${requester_phone}\n⚡ Urgency: ${urgency}${message ? `\n💬 Message: ${message}` : ""}\n\nPlease contact them if you can help!`);
+
+        const whatsappResponse = await fetch(whatsappUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": `Basic ${btoa(`${twilioAccountSid}:${twilioAuthToken}`)}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: whatsappData.toString(),
+        });
+
+        const whatsappResult = await whatsappResponse.text();
+        console.log("Twilio WhatsApp response status:", whatsappResponse.status);
+        console.log("Twilio WhatsApp response:", whatsappResult);
+
+        if (whatsappResponse.ok) {
+          results.whatsapp = true;
+          console.log("WhatsApp message sent successfully");
+        } else {
+          console.log("WhatsApp not configured or failed:", whatsappResult);
+        }
+      } catch (whatsappError) {
+        console.log("WhatsApp sending not available:", whatsappError);
       }
     } else {
-      console.log("SMS not configured or donor has no phone");
+      const missing = [];
+      if (!twilioAccountSid) missing.push("TWILIO_ACCOUNT_SID");
+      if (!twilioAuthToken) missing.push("TWILIO_AUTH_TOKEN");
+      if (!twilioPhoneNumber) missing.push("TWILIO_PHONE_NUMBER");
+      if (!donor.phone) missing.push("donor phone");
+      console.log("SMS/WhatsApp not sent. Missing:", missing.join(", "));
+      results.errors.push(`SMS not configured: missing ${missing.join(", ")}`);
     }
 
-    // 3. Send Email via Resend
+    // 4. Send Email via Resend
     if (resendApiKey && profile?.email) {
       try {
+        console.log("Sending email to:", profile.email);
         const resend = new Resend(resendApiKey);
         const emailResponse = await resend.emails.send({
           from: "RedConnect <onboarding@resend.dev>",
@@ -229,16 +308,26 @@ const handler = async (req: Request): Promise<Response> => {
           `,
         });
 
+        console.log("Resend email response:", JSON.stringify(emailResponse));
+
         if (emailResponse.data?.id) {
           results.email = true;
           console.log("Email sent successfully");
+        } else {
+          console.error("Email failed:", emailResponse.error);
+          results.errors.push(`Email failed: ${emailResponse.error?.message}`);
         }
       } catch (emailError) {
         console.error("Email sending failed:", emailError);
+        results.errors.push(`Email exception: ${emailError}`);
       }
     } else {
       console.log("Email not configured or donor has no email");
+      if (!resendApiKey) results.errors.push("RESEND_API_KEY not configured");
+      if (!profile?.email) results.errors.push("Donor email not found");
     }
+
+    console.log("=== Notification Results ===", JSON.stringify(results));
 
     return new Response(
       JSON.stringify({ 
@@ -254,7 +343,7 @@ const handler = async (req: Request): Promise<Response> => {
   } catch (error: any) {
     console.error("Error in notify-donor function:", error);
     return new Response(
-      JSON.stringify({ error: "An error occurred while processing your request" }),
+      JSON.stringify({ error: "An error occurred while processing your request", details: error.message }),
       {
         status: 500,
         headers: { "Content-Type": "application/json", ...corsHeaders },
